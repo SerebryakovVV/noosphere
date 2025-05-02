@@ -1,7 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
-use dioxus::prelude::*;
+use dioxus::{html::div, prelude::*};
 use rusqlite::{self, params};
 
+use dioxus::desktop::WindowBuilder;
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const DB_PATH: &str = "./noosphere_db.db3";
@@ -20,6 +21,12 @@ struct Task {
     text: String
 }
 
+struct Book {
+    id: i64,
+    name: String,
+    current: i32,
+    length: i32
+}
 
 #[derive(Clone)]
 struct DB {
@@ -64,14 +71,52 @@ impl DB {
         )
     }
     
-    fn query_books() {}
+    fn query_books(&self) -> Vec<Book> {
+        let connection_borrow = self.connection.borrow_mut();
+        let mut statement = connection_borrow.prepare("select id, text, current, length from books").unwrap_or_else(|e| {
+            println!("{}", e);
+            panic!();
+        });
+        let rows = statement.query_map([], |row| {
+            Ok(
+                Book {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    current: row.get(2)?,
+                    length: row.get(3)?
+                }
+            )
+        }).unwrap_or_else(|e| {
+            println!("{}", e);
+            panic!();
+        });
+        let mut res_arr = Vec::<Book>::new();
+        for row in rows {
+            res_arr.push(row.unwrap());
+        };
+        res_arr
+    }
     
     fn query_timers() {}
 }
 
 
 fn main() {
-    dioxus::launch(App);
+    dioxus
+        ::LaunchBuilder
+        ::desktop()
+        .with_cfg(
+            dioxus
+            ::desktop
+            ::Config
+            ::default()
+            .with_window(
+                WindowBuilder
+                ::new()
+                // .with_always_on_top(false)
+                .with_always_on_top(true)
+            )
+        ).launch(App);
 }
 
 
@@ -81,6 +126,10 @@ fn App() -> Element {
     use_context_provider(|| db.clone());
     let tasks = use_signal(|| db.query_tasks());
     use_context_provider(|| tasks);
+
+    let books = use_signal(|| db.query_books());
+    use_context_provider(|| books);
+
     let mut page = use_signal(|| Page::Tasks);
     rsx! {
         document::Stylesheet { href: MAIN_CSS }
@@ -196,8 +245,78 @@ fn TaskComponent(id: i64, text: String, index: usize) -> Element {
 
 #[component]
 fn BooksPage() -> Element {
+    let books = use_context::<Signal<Vec<Book>>>();
     rsx!(
-        div {"books here"}
+        div {
+            id: "books-page",
+            for (index, b) in books.read().iter().enumerate() {
+                BookComponent{
+                    id: b.id,
+                    name: b.name.clone(),
+                    current: b.current,
+                    length: b.length,
+                    index: index
+                }
+            }
+        }
+    )
+}
+
+
+#[component]
+fn BookComponent(id: i64, name: String, current: i32, length: i32, index: usize) -> Element {
+    let mut current_page_state_string = use_signal(|| String::from(""));
+    let mut done_div_width = use_signal(|| 0);
+    rsx!(
+        div { 
+            id: "book-component",
+            div {
+                id: "book-name",
+                "{index + 1}) {name}"
+            }
+            div {
+                id: "book-progress-container",
+                input {  
+                    id: "page-count-done",
+                    value: "{current_page_state_string}",
+                    oninput: move |event| {
+                        let new_current_page_string = event.value()
+                                                           .chars()
+                                                           .filter(|x| x.is_ascii_digit())
+                                                           .take(5)
+                                                           .collect::<String>()
+                                                           .trim_start_matches('0').to_string();
+                        if new_current_page_string.len() == 0 {
+                            done_div_width.set(0);
+                            current_page_state_string.set(String::from(""));
+                            return;
+                        }
+                        let new_current_page_number = new_current_page_string.parse::<i32>().unwrap();
+                        if new_current_page_number >= length {
+                            done_div_width.set(100);
+                            current_page_state_string.set(length.to_string());
+                            return;
+                        } 
+                        done_div_width.set(
+                            ((new_current_page_number as f32 / length  as f32) * 100.0) as i32
+                        );
+                        current_page_state_string.set(new_current_page_string);
+                    },
+                    "{current}"
+                }
+                div {
+                    id: "progress-bar",
+                    div {
+                        id: "progress-bar-done",
+                        style: "width: {done_div_width}%"
+                    }
+                }
+                div {  
+                    id: "page-count-left",
+                    "{length}"
+                }
+            }
+        }
     )
 }
 
