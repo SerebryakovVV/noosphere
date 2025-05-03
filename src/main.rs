@@ -96,6 +96,18 @@ impl DB {
         };
         res_arr
     }
+
+    fn add_book(&self, name: String, length: i32) -> Result<i64, rusqlite::Error> {
+        Ok(2)  // add the logic
+    }
+
+    // fn delete_book(&self, id: i64) -> Result<i64, rusqlite::Error> {
+
+    // }
+
+    fn update_current_page(&self, id: i64) {
+
+    }
     
     fn query_timers() {}
 }
@@ -249,19 +261,60 @@ fn BooksPage() -> Element {
     rsx!(
         div {
             id: "books-page",
-            for (index, b) in books.read().iter().enumerate() {
-                BookComponent{
-                    id: b.id,
-                    name: b.name.clone(),
-                    current: b.current,
-                    length: b.length,
-                    index: index
+            div {
+                id: "book-scroll-container",
+                for (index, b) in books.read().iter().enumerate() {
+                    BookComponent{
+                        id: b.id,
+                        name: b.name.clone(),
+                        current: b.current,
+                        length: b.length,
+                        index: index
+                    }
                 }
-            }
+            },
+            BookInputBar {}
         }
     )
 }
 
+#[component]
+fn BookInputBar() -> Element {
+    let mut book_data = use_signal(|| "".to_string());
+    let mut books = use_context::<Signal<Vec<Book>>>();
+    let db = use_context::<DB>();
+    rsx!{
+        input {
+            id: "input-bar",
+            value: "{book_data}", 
+            autocomplete: "off",
+            oninput: move |event| book_data.set(event.value()),
+            onkeydown: move |event| {
+                if event.code() == Code::Enter {
+                    let book_to_add = book_data.read().clone();
+                    let trimmed = book_to_add.trim();
+                    if !trimmed.is_empty() {
+                        let (name, length) = match trimmed.split_once('>') {
+                            Some((n, l)) => match l.parse::<i32>() {
+                                Ok(l_number) => (n.to_string(), l_number),
+                                Err(_) => return
+                            },
+                            None => return
+                        };
+                        match db.add_book(name.clone(), length) {
+                            Ok(new_book_id) => {
+                                books.write().push(Book { id: new_book_id, name: name, current: 0, length: length});
+                                book_data.set(String::new());
+                            },
+                            Err(_) => {}
+                        }
+                    }
+                }
+            },
+            placeholder: "Input the book..." 
+        }
+    }
+}
 
 #[component]
 fn BookComponent(id: i64, name: String, current: i32, length: i32, index: usize) -> Element {

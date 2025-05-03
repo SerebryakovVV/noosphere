@@ -99,13 +99,22 @@ body {
 
 
 
-
-
 #books-page {
-    width: 100%;
     height: 100%;
-    overflow-y: scroll;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
 }
+
+
+#book-scroll-container {
+    width: 100%;
+    overflow-y: scroll;
+    padding-bottom: 40px;
+    flex: 1;
+}
+
+
 
 #book-component {
     border-bottom: 1px solid black;
